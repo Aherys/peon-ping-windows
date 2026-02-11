@@ -407,6 +407,67 @@ if ($NOTIFY -and -not $PAUSED) {
     } catch {
         # Toast not available (older Windows, etc.) - silently ignore
     }
+
+    # --- Flash parent window in taskbar (makes Rider/Terminal icon blink orange) ---
+    try {
+        if (-not ([System.Management.Automation.PSTypeName]'PeonPing_FlashWindow').Type) {
+            Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+
+public class PeonPing_FlashWindow {
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetConsoleWindow();
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct FLASHWINFO {
+        public uint cbSize;
+        public IntPtr hwnd;
+        public uint dwFlags;
+        public uint uCount;
+        public uint dwTimeout;
+    }
+
+    [DllImport("user32.dll")]
+    public static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
+
+    // Flash both caption bar and taskbar icon, keep flashing until window gets focus
+    public static void Flash(IntPtr hwnd, uint count) {
+        FLASHWINFO fw = new FLASHWINFO();
+        fw.cbSize = (uint)Marshal.SizeOf(typeof(FLASHWINFO));
+        fw.hwnd = hwnd;
+        fw.dwFlags = 0x0003 | 0x000C; // FLASHW_ALL | FLASHW_TIMERNOFG
+        fw.uCount = count;
+        fw.dwTimeout = 0; // use default cursor blink rate
+        FlashWindowEx(ref fw);
+    }
+
+    // GA_ROOTOWNER = 3 : walks up to the top-level owner window
+    public static IntPtr GetRootOwner(IntPtr hwnd) {
+        return GetAncestor(hwnd, 3);
+    }
+}
+"@
+        }
+        # Get console window, then walk up to the root owner (Rider, Windows Terminal, etc.)
+        $consoleHwnd = [PeonPing_FlashWindow]::GetConsoleWindow()
+        if ($consoleHwnd -ne [IntPtr]::Zero) {
+            $rootHwnd = [PeonPing_FlashWindow]::GetRootOwner($consoleHwnd)
+            if ($rootHwnd -ne [IntPtr]::Zero) {
+                [PeonPing_FlashWindow]::Flash($rootHwnd, 5)
+            } else {
+                [PeonPing_FlashWindow]::Flash($consoleHwnd, 5)
+            }
+        }
+    } catch {
+        # Flash not critical - silently ignore
+    }
 }
 
 # --- Persist state (before blocking audio, so mutex is held minimally) ---
