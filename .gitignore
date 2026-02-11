@@ -1,0 +1,9 @@
+# State files (user-specific)
+.state.json
+.paused
+.last_update_check
+.update_available
+
+# Internal docs (not for distribution)
+REFERENCE_CODE.md
+REVIEW.md
